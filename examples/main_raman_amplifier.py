@@ -31,8 +31,9 @@ def main(fiber_information, spectral_information, raman_pump_information, raman_
   fiber_under_test.solver_params = raman_solver_infofrmation
 
   raman_solution = fiber_under_test.raman_bvp_solution
+  raman_ase = fiber_under_test.raman_ase_solution
 
-  return raman_solution
+  return raman_solution, raman_ase
 
 
 if __name__ == '__main__':
@@ -52,6 +53,8 @@ if __name__ == '__main__':
   roll_off = 0.1
   symbol_rate = 32e9
   start_f = 191.0e12
+  T = 298
+  Bn = 32e9
 
   # RAMAN PUMP PARAMETERS
   pump_pow = [150e-3,   250e-3,   150e-3,   250e-3,   200e-3]
@@ -93,12 +96,19 @@ if __name__ == '__main__':
   raman_solver_information = namedtuple('RamanSolverInformation', 'z_resolution tolerance verbose')
   solver_parameters = raman_solver_information(z_resolution=z_resolution, tolerance=tolerance, verbose=verbose)
 
-  gain_loss_profile = main(fiber, spectrum, raman_pumps, solver_parameters)
+  gain_loss_profile, raman_ase = main(fiber, spectrum, raman_pumps, solver_parameters)
 
   z_rho = gain_loss_profile.z
   freq_rho = gain_loss_profile.frequency
   rho = gain_loss_profile.rho
   power_slice = 10*np.log10(gain_loss_profile.power)+30
+
+  z_ase = raman_ase.z[1:]
+  freq_ase = raman_ase.frequency[0:-1]
+  power_ase = 10*np.log10(raman_ase.power[:-1,1:])+30
+
+
+
 
   # PLOT RESULTS
   X, Y = np.meshgrid(z_rho*1e-3, freq_rho*1e-12)
@@ -136,3 +146,27 @@ if __name__ == '__main__':
   plt.grid()
 
   plt.show()
+
+
+
+  # PLOT ASE
+  X, Y = np.meshgrid(z_ase*1e-3, freq_ase*1e-12)
+
+  fig4 = plt.figure()
+  ax = fig4.gca(projection='3d')
+  surf = ax.plot_surface(X, Y, power_ase, rstride=1, cstride=1, cmap=cm.coolwarm,
+                         linewidth=0, antialiased=False)
+  ax.set_xlabel('z [km]')
+  ax.set_ylabel('f [THz]')
+  ax.set_zlabel('power ase [dBm]')
+
+  fig4.colorbar(surf, shrink=0.5, aspect=5)
+
+  fig4 = plt.figure()
+  plt.plot(z_ase * 1e-3, power_ase.transpose())
+  plt.xlabel('z [km]')
+  plt.ylabel('Power ase [dBm]')
+  plt.grid()
+
+  plt.show()
+

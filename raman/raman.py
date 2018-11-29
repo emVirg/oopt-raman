@@ -11,8 +11,11 @@ This module contains the class RamanSolver to solve the set of Raman ODE equatio
 import numpy as np
 import raman.utilities as ut
 from scipy.integrate import solve_bvp
+from scipy.integrate import cumtrapz
 from scipy.interpolate import interp1d
-
+import scipy.constants as ph
+import matplotlib.pyplot as plt
+from matplotlib import cm
 
 class RamanSolver:
 
@@ -31,6 +34,7 @@ class RamanSolver:
         self._spectral_information = None
         self._raman_pump_information = None
         self._raman_bvp_solution = None
+        self._raman_ase_solution = None
 
     @property
     def fiber_information(self):
@@ -75,6 +79,101 @@ class RamanSolver:
         """
         self._solver_params = solver_params
         self._raman_bvp_solution = None
+
+    @property
+    def raman_ase_solution(self):
+        if self._raman_ase_solution is None:
+
+            # SET STUFF
+            fiber_length = self.fiber_information.length
+            attenuation_coefficient = self.fiber_information.attenuation_coefficient
+            raman_coefficient = self.fiber_information.raman_coefficient
+
+            spectral_info = self.spectral_information
+            raman_pump_information = self.raman_pump_information
+
+            z_resolution = self.solver_params.z_resolution
+            tolerance = self.solver_params.tolerance
+            verbose = self.solver_params.verbose
+
+            if verbose:
+                print('Start computing fiber Raman ASE')
+
+            power_spectrum, freq_array, prop_direct = ut.compute_power_spectrum(spectral_info, raman_pump_information)
+
+            if len(attenuation_coefficient.alpha_power) >= 2:
+                interp_alphap = interp1d(attenuation_coefficient.frequency, attenuation_coefficient.alpha_power)
+                alphap_fiber = interp_alphap(freq_array)
+            else:
+                alphap_fiber = attenuation_coefficient.alpha_power * np.ones(freq_array.shape)
+
+            freq_diff = abs(freq_array - np.reshape(freq_array, (len(freq_array), 1)))
+            if len(raman_coefficient.cr) >= 2:
+                interp_cr = interp1d(raman_coefficient.frequency, raman_coefficient.cr)
+                cr = interp_cr(freq_diff)
+            else:
+                cr = raman_coefficient.cr * np.ones(freq_diff.shape)
+
+            # z propagation axis
+            z_array = self.raman_bvp_solution.z
+            pase0 = np.zeros(freq_array.shape)
+
+            power_aselin = self._ase_int(z_array, self.raman_bvp_solution.power, alphap_fiber, freq_array, cr, freq_diff, pase0)
+            power_ase = 10 * np.log10(power_aselin) + 30
+            X, Y = np.meshgrid(z_array * 1e-3, freq_array * 1e-12)
+
+            fig4 = plt.figure()
+            ax = fig4.gca(projection='3d')
+            surf = ax.plot_surface(X, Y, power_ase, rstride=1, cstride=1, cmap=cm.coolwarm,
+                                   linewidth=0, antialiased=False)
+            ax.set_xlabel('z [km]')
+            ax.set_ylabel('f [THz]')
+            ax.set_zlabel('power ase [dBm]')
+
+            fig4.colorbar(surf, shrink=0.5, aspect=5)
+
+            fig4 = plt.figure()
+            plt.plot(z_array * 1e-3, power_ase.transpose())
+            plt.xlabel('z [km]')
+            plt.ylabel('Power ase [dBm]')
+            plt.grid()
+
+            plt.show()
+            print(1)
+            # self._raman_ase_solution = raman_ase_solution
+
+        return self._raman_ase_solution
+
+    def _ase_int(self, z_array, raman_matrix, alphap_fiber, freq_array, cr_raman_matrix, freq_diff, pase0):
+        dx = self.solver_params.z_resolution
+        h = ph.value('Planck constant')
+        Kb = ph.value('Boltzmann constant')
+        Bn = 32e9
+        T = 298
+
+        ase = np.nan * np.ones(raman_matrix.shape)
+        int_pump = cumtrapz(raman_matrix, z_array, dx=dx, axis=1, initial=0)
+
+        for f_ind, f_ase in enumerate(freq_array):
+            cr_raman = cr_raman_matrix[f_ind, :]
+            vibrational_loss = f_ase / freq_array[:f_ind]
+            eta = 1/(np.exp((h*freq_diff[f_ind, :])/(Kb*T)) - 1)
+
+            int_alpha = -alphap_fiber[f_ind] * z_array
+            int_rlossv = np.sum((cr_raman[:f_ind] * vibrational_loss * int_pump[:f_ind, :].transpose()).transpose(), axis=0)
+            int_rgainv = np.sum((cr_raman[f_ind + 1:] * int_pump[f_ind + 1:, :].transpose()).transpose(), axis=0)
+
+            int_A = int_alpha + int_rgainv + int_rlossv
+
+            B = np.sum((cr_raman[f_ind+1:]*(1+eta[f_ind+1:])*raman_matrix[f_ind+1:, :].transpose()).transpose() * h*f_ase*Bn, axis=0)
+
+            F = pase0[f_ind] * np.exp(int_A)
+            C = np.exp(int_A) * cumtrapz(B*np.exp(-int_A), z_array, dx=dx, initial=0)
+
+            ase[f_ind, :] = F + C
+
+        return ase
+
 
     @property
     def raman_bvp_solution(self):
@@ -149,7 +248,6 @@ class RamanSolver:
                 computed_boundary_value[index] = yb[index]
 
         return power_spectrum - computed_boundary_value
-
 
     def _initial_guess_raman(self, z, power_spectrum, alphap_fiber, prop_direct):
         """ Computes the initial guess knowing the boundary conditions
