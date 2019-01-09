@@ -44,7 +44,7 @@ def raised_cosine_comb(f, *carriers):
 
     :param f: numpy array of frequencies in Hz
     :param carriers: namedtuple describing the WDM comb
-    :return: PSD of the WDM comb evaluated over f
+    :return: PSD of the WDM comb evaluated over f in
     """
     psd = np.zeros(np.shape(f))
     for carrier in carriers:

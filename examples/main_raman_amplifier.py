@@ -7,7 +7,9 @@ import raman.raman as rm
 import raman.utilities as ut
 from mpl_toolkits.mplot3d import axes3d
 import matplotlib.pyplot as plt
+from copy import deepcopy
 from matplotlib import cm
+from scipy.io import savemat
 
 
 def raman_gain_efficiency_from_csv(csv_file_name):
@@ -48,7 +50,7 @@ if __name__ == '__main__':
   temperature_k = np.array([298])
 
   # WDM COMB PARAMETERS
-  num_channels = 91
+  num_channels = 10
   delta_f = 50e9
   pch = 1e-3
   roll_off = 0.1
@@ -107,68 +109,88 @@ if __name__ == '__main__':
 
   z_ase = ase_profile.z[1:]
   freq_ase = ase_profile.frequency[0:-1]
-  power_ase = 10*np.log10(ase_profile.power[:-1, 1:])+30
+  power_ase = ase_profile.power[:-1, 1:]
+
+  signal_rx = gain_loss_profile.power[:-5, -1]
+  signal_tx = []
+  for carrier in carriers:
+    signal_tx.append(carrier.power.signal)
 
 
-  # PLOT RESULTS
-  X, Y = np.meshgrid(z_rho*1e-3, freq_rho*1e-12)
+  savemat('ramansolver.mat', dict([('z_rho', z_rho), ('f_rho', freq_rho), ('rho', rho), ('power', power_slice), ('z_ase', z_ase), ('f_ase', freq_ase), ('power_ase', power_ase), ('signal_tx', signal_tx), ('signal_rx', signal_rx)]))
 
-  fig1 = plt.figure()
-  ax = fig1.gca(projection='3d')
-  surf = ax.plot_surface(X, Y, 20 * np.log10(gain_loss_profile.rho), rstride=1, cstride=1, cmap=cm.coolwarm,
-                         linewidth=0, antialiased=False)
-  ax.set_xlabel('z [km]')
-  ax.set_ylabel('f [THz]')
-  ax.set_zlabel('rho [dB]')
-
-  fig1.colorbar(surf, shrink=0.5, aspect=5)
-
-  fig2 = plt.figure()
-  plt.plot(z_rho * 1e-3, (20 * np.log10(gain_loss_profile.rho.transpose())))
-  plt.xlabel('z [km]')
-  plt.ylabel('rho [dB]')
-  plt.grid()
-
-  fig3 = plt.figure()
-  ax = fig3.gca(projection='3d')
-  surf = ax.plot_surface(X, Y, power_slice, rstride=1, cstride=1, cmap=cm.coolwarm,
-                         linewidth=0, antialiased=False)
-  ax.set_xlabel('z [km]')
-  ax.set_ylabel('f [THz]')
-  ax.set_zlabel('power [dBm]')
-
-  fig3.colorbar(surf, shrink=0.5, aspect=5)
-
-  fig4 = plt.figure()
-  plt.plot(z_rho * 1e-3, power_slice.transpose())
-  plt.xlabel('z [km]')
-  plt.ylabel('Power [dBm]')
-  plt.grid()
+  # # PLOT RESULTS
+  # X, Y = np.meshgrid(z_rho*1e-3, freq_rho*1e-12)
+  #
+  # fig1 = plt.figure()
+  # ax = fig1.gca(projection='3d')
+  # surf = ax.plot_surface(X, Y, 20 * np.log10(gain_loss_profile.rho), rstride=1, cstride=1, cmap=cm.coolwarm,
+  #                        linewidth=0, antialiased=False)
+  # ax.set_xlabel('z [km]')
+  # ax.set_ylabel('f [THz]')
+  # ax.set_zlabel('rho [dB]')
+  #
+  # fig1.colorbar(surf, shrink=0.5, aspect=5)
+  #
+  # fig2 = plt.figure()
+  # plt.plot(z_rho * 1e-3, (20 * np.log10(gain_loss_profile.rho.transpose())))
+  # plt.xlabel('z [km]')
+  # plt.ylabel('rho [dB]')
+  # plt.grid()
+  #
+  # fig3 = plt.figure()
+  # ax = fig3.gca(projection='3d')
+  # surf = ax.plot_surface(X, Y, power_slice, rstride=1, cstride=1, cmap=cm.coolwarm,
+  #                        linewidth=0, antialiased=False)
+  # ax.set_xlabel('z [km]')
+  # ax.set_ylabel('f [THz]')
+  # ax.set_zlabel('power [dBm]')
+  #
+  # fig3.colorbar(surf, shrink=0.5, aspect=5)
+  #
+  # fig4 = plt.figure()
+  # plt.plot(z_rho * 1e-3, power_slice.transpose())
+  # plt.xlabel('z [km]')
+  # plt.ylabel('Power [dBm]')
+  # plt.grid()
 
   # PLOT ASE
-  X, Y = np.meshgrid(z_ase*1e-3, freq_ase*1e-12)
+  ase_end = power_ase[:-4, -1]
 
-  fig5 = plt.figure()
-  ax = fig5.gca(projection='3d')
-  surf = ax.plot_surface(X, Y, power_ase, rstride=1, cstride=1, cmap=cm.coolwarm,
-                         linewidth=0, antialiased=False)
-  ax.set_xlabel('z [km]')
-  ax.set_ylabel('f [THz]')
-  ax.set_zlabel('power ase [dBm]')
+  fig8 = plt.figure()
+  plt.plot(freq_ase[:-4] * 1e-12, 10 * np.log10(signal_tx) + 30, 'bo', label='TX Channel Power')
+  plt.plot(freq_ase[:-4] * 1e-12, 10 * np.log10(signal_rx) + 30, 'ro', label='Raman RX Channel Power')
+  plt.plot(freq_ase[:-4] * 1e-12, 10 * np.log10(ase_end) + 30,   'yo', label='Raman ASE noise Power')
+  plt.legend()
 
-  fig5.colorbar(surf, shrink=0.5, aspect=5)
-
-  fig6 = plt.figure()
-  plt.plot(z_ase * 1e-3, power_ase.transpose())
-  plt.xlabel('z [km]')
-  plt.ylabel('Power ase [dBm]')
-  plt.grid()
-
-  fig7 = plt.figure()
-  plt.plot(freq_ase[:-4]* 1e-3, power_ase[:-4,-1])
-  plt.xlabel('z [km]')
-  plt.ylabel('Power ase [dBm]')
+  plt.xlabel('Frequency [THz]')
+  plt.ylabel('Power [dB]')
   plt.grid()
 
   plt.show()
 
+  X, Y = np.meshgrid(z_ase*1e-3, freq_ase*1e-12)
+  #
+  # fig5 = plt.figure()
+  # ax = fig5.gca(projection='3d')
+  # surf = ax.plot_surface(X, Y, power_ase, rstride=1, cstride=1, cmap=cm.coolwarm,
+  #                        linewidth=0, antialiased=False)
+  # ax.set_xlabel('z [km]')
+  # ax.set_ylabel('f [THz]')
+  # ax.set_zlabel('power ase [dBm]')
+  #
+  # fig5.colorbar(surf, shrink=0.5, aspect=5)
+  #
+  # fig6 = plt.figure()
+  # plt.plot(z_ase * 1e-3, power_ase.transpose())
+  # plt.xlabel('z [km]')
+  # plt.ylabel('Power ase [dBm]')
+  # plt.grid()
+  #
+  # fig7 = plt.figure()
+  # plt.plot(freq_ase[:-4]* 1e-3, power_ase[:-4,-1])
+  # plt.xlabel('z [km]')
+  # plt.ylabel('Power ase [dBm]')
+  # plt.grid()
+  #
+  #

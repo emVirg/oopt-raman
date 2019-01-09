@@ -3,3 +3,4 @@ oopt-raman is written and maintained by the Telecom Infra Project with work cont
 (*in alphabetical order*)
 
 - Alessio Ferrari (Politecnico di Torino) <alessio.ferrari@polito.it>
+- Emanuele Virgillito (Politecnico di Torino) <emanuele.virgillito@polito.it>
